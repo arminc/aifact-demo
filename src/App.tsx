@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
-
-type ContractDefinition = {
-  id: string;
-  title: string;
-  requiredModelQuality: number;
-  rewardEuros: number;
-};
+import {
+  calculateTrainingQualityGain,
+  CONTRACT_LADDER,
+  DELIVERY_DURATION_MS,
+  getNextIncompleteContract,
+  getTrainingDurationMs,
+  resolveCleaningOutcome,
+  STARTER_HARDWARE,
+  WIN_EUROS
+} from './gameRules';
 
 type TimedActivityType = 'training' | 'delivery';
 
@@ -24,40 +27,25 @@ type StartupState = {
   rawData: number;
   cleanData: number;
   modelQuality: number;
+  completedContractIds: string[];
   revealedContractId: string | null;
   activeTimedActivity: ActiveTimedActivity | null;
 };
-
-const TRAINING_DURATION_MS = 6000;
-const DELIVERY_DURATION_MS = 5000;
-const WIN_EUROS = 100;
-
-const CONTRACTS: ContractDefinition[] = [
-  {
-    id: 'starter-ai-pilot',
-    title: 'Starter AI Pilot Contract',
-    requiredModelQuality: 8,
-    rewardEuros: 100
-  }
-];
 
 const initialState: StartupState = {
   euros: 0,
   rawData: 0,
   cleanData: 0,
   modelQuality: 0,
+  completedContractIds: [],
   revealedContractId: null,
   activeTimedActivity: null
-};
-
-const calculateTrainingQualityGain = (cleanDataUsed: number, trainingDurationMs: number) => {
-  const durationSeconds = trainingDurationMs / 1000;
-  return Math.round(cleanDataUsed * 1.5 + durationSeconds * 0.6);
 };
 
 function App() {
   const [state, setState] = useState<StartupState>(initialState);
   const [now, setNow] = useState(() => Date.now());
+  const [selectedTrainingCleanData, setSelectedTrainingCleanData] = useState(1);
 
   useEffect(() => {
     if (!state.activeTimedActivity) {
@@ -86,10 +74,7 @@ function App() {
       }
 
       if (current.activeTimedActivity.type === 'training') {
-        const qualityGain = calculateTrainingQualityGain(
-          current.activeTimedActivity.trainingInputCleanData ?? 3,
-          current.activeTimedActivity.endsAt - current.activeTimedActivity.startedAt
-        );
+        const qualityGain = calculateTrainingQualityGain(current.activeTimedActivity.trainingInputCleanData ?? 1);
 
         return {
           ...current,
@@ -99,7 +84,7 @@ function App() {
       }
 
       const deliveredContractId = current.activeTimedActivity.contractId;
-      const deliveredContract = CONTRACTS.find((contract) => contract.id === deliveredContractId);
+      const deliveredContract = CONTRACT_LADDER.find((contract) => contract.id === deliveredContractId);
 
       if (!deliveredContract) {
         return {
@@ -111,6 +96,7 @@ function App() {
       return {
         ...current,
         euros: current.euros + deliveredContract.rewardEuros,
+        completedContractIds: [...current.completedContractIds, deliveredContract.id],
         revealedContractId: null,
         activeTimedActivity: null
       };
@@ -130,8 +116,13 @@ function App() {
   }, [state.modelQuality]);
 
   const revealedContract = useMemo(
-    () => CONTRACTS.find((contract) => contract.id === state.revealedContractId) ?? null,
+    () => CONTRACT_LADDER.find((contract) => contract.id === state.revealedContractId) ?? null,
     [state.revealedContractId]
+  );
+
+  const nextContract = useMemo(
+    () => getNextIncompleteContract(state.completedContractIds),
+    [state.completedContractIds]
   );
 
   const isBusy = state.activeTimedActivity !== null;
@@ -152,7 +143,11 @@ function App() {
 
   const canCollectData = !isBusy;
   const canCleanData = !isBusy && state.rawData > 0;
-  const canStartTraining = !isBusy && state.cleanData >= 3;
+  const hasValidTrainingSelection =
+    Number.isInteger(selectedTrainingCleanData) &&
+    selectedTrainingCleanData >= 1 &&
+    selectedTrainingCleanData <= state.cleanData;
+  const canStartTraining = !isBusy && hasValidTrainingSelection;
   const canFindContract = !isBusy && !state.revealedContractId;
   const canDeliverContract =
     !isBusy &&
@@ -190,7 +185,7 @@ function App() {
     setState((current) => ({
       ...current,
       rawData: current.rawData - 1,
-      cleanData: current.cleanData + 1
+      cleanData: current.cleanData + resolveCleaningOutcome().producedCleanData
     }));
   };
 
@@ -200,16 +195,18 @@ function App() {
     }
 
     const startedAt = Date.now();
+    const cleanDataUsed = selectedTrainingCleanData;
+    const durationMs = getTrainingDurationMs(cleanDataUsed, STARTER_HARDWARE);
 
     setState((current) => ({
       ...current,
-      cleanData: current.cleanData - 3,
+      cleanData: current.cleanData - cleanDataUsed,
       activeTimedActivity: {
         type: 'training',
-        label: 'Training model on laptop',
+        label: `Training model on ${STARTER_HARDWARE.displayName}`,
         startedAt,
-        endsAt: startedAt + TRAINING_DURATION_MS,
-        trainingInputCleanData: 3
+        endsAt: startedAt + durationMs,
+        trainingInputCleanData: cleanDataUsed
       }
     }));
   };
@@ -221,7 +218,7 @@ function App() {
 
     setState((current) => ({
       ...current,
-      revealedContractId: CONTRACTS[0]?.id ?? null
+      revealedContractId: getNextIncompleteContract(current.completedContractIds)?.id ?? null
     }));
   };
 
@@ -247,7 +244,7 @@ function App() {
   return (
     <main className="app-shell">
       <header>
-        <p className="kicker">AI Startup Builder • MVP Loop</p>
+        <p className="kicker">AI Startup Builder • Early Game</p>
         <h1>Build an AI startup from your laptop</h1>
         <p>
           Grow from zero to your first €100 by collecting data, training your model, and delivering
@@ -282,6 +279,14 @@ function App() {
             <strong>Current Activity</strong>
             <span>{currentActivityText}</span>
           </li>
+          <li>
+            <strong>Hardware</strong>
+            <span>{STARTER_HARDWARE.displayName}</span>
+          </li>
+          <li>
+            <strong>Training Speed</strong>
+            <span>{STARTER_HARDWARE.trainingSpeed.toFixed(1)}x</span>
+          </li>
         </ul>
       </section>
 
@@ -310,8 +315,11 @@ function App() {
             <p>Reward: €{revealedContract.rewardEuros}</p>
           </div>
         ) : (
-          <p>No contract revealed yet.</p>
+          <p>{nextContract ? 'No contract revealed yet.' : 'All current contracts completed.'}</p>
         )}
+        {nextContract ? (
+          <p className="contract-hint">Next available contract unlocks in order and cannot be repeated.</p>
+        ) : null}
       </section>
 
       <section className="panel">
@@ -321,10 +329,22 @@ function App() {
             Collect Data (+1 raw)
           </button>
           <button type="button" onClick={cleanDataset} disabled={!canCleanData}>
-            Clean Dataset (-1 raw, +1 clean)
+            Clean Dataset (-1 raw, usually +1 clean)
           </button>
+          <label className="training-input">
+            Clean data for training
+            <input
+              type="number"
+              min={1}
+              max={Math.max(1, state.cleanData)}
+              step={1}
+              value={selectedTrainingCleanData}
+              onChange={(event) => setSelectedTrainingCleanData(Number(event.target.value))}
+              disabled={isBusy || state.cleanData === 0}
+            />
+          </label>
           <button type="button" onClick={startTrainingCycle} disabled={!canStartTraining}>
-            Train Model (-3 clean, timed)
+            Train Model (timed)
           </button>
           <button type="button" onClick={findContract} disabled={!canFindContract}>
             Find Contract
@@ -333,12 +353,16 @@ function App() {
             Deliver Contract (timed)
           </button>
         </div>
+        <p className="training-hint">
+          Training takes about {getTrainingDurationMs(Math.max(1, selectedTrainingCleanData), STARTER_HARDWARE) / 1000}s
+          at current hardware speed. Larger runs usually improve model quality more, but outcomes vary.
+        </p>
       </section>
 
       {hasWon ? (
         <section className="panel win-panel" aria-live="polite">
           <h2>Milestone reached</h2>
-          <p>You earned your first €100. MVP completion achieved.</p>
+          <p>You earned your first €100. First startup milestone achieved.</p>
         </section>
       ) : null}
     </main>
