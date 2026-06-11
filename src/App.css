@@ -102,6 +102,10 @@ p {
   font-size: 0.95rem;
 }
 
+.contract-actions {
+  margin-top: 0.75rem;
+}
+
 .training-input {
   display: inline-flex;
   flex-direction: column;

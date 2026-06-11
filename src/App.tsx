@@ -148,7 +148,7 @@ function App() {
     selectedTrainingCleanData >= 1 &&
     selectedTrainingCleanData <= state.cleanData;
   const canStartTraining = !isBusy && hasValidTrainingSelection;
-  const canFindContract = !isBusy && !state.revealedContractId;
+  const canFindContract = !isBusy && !state.revealedContractId && !!nextContract;
   const canDeliverContract =
     !isBusy &&
     !!revealedContract &&
@@ -309,13 +309,29 @@ function App() {
       <section className="panel">
         <h2>Contract Board</h2>
         {revealedContract ? (
-          <div className="contract-card">
-            <h3>{revealedContract.title}</h3>
-            <p>Required Model Quality: {revealedContract.requiredModelQuality}</p>
-            <p>Reward: €{revealedContract.rewardEuros}</p>
-          </div>
+          <>
+            <div className="contract-card">
+              <h3>{revealedContract.title}</h3>
+              <p>Required Model Quality: {revealedContract.requiredModelQuality}</p>
+              <p>Reward: €{revealedContract.rewardEuros}</p>
+            </div>
+            <div className="actions contract-actions">
+              <button type="button" onClick={deliverContract} disabled={!canDeliverContract}>
+                Deliver Contract (timed)
+              </button>
+            </div>
+          </>
         ) : (
-          <p>{nextContract ? 'No contract revealed yet.' : 'All current contracts completed.'}</p>
+          <>
+            <p>{nextContract ? 'No contract revealed yet.' : 'All current contracts completed.'}</p>
+            {nextContract ? (
+              <div className="actions contract-actions">
+                <button type="button" onClick={findContract} disabled={!canFindContract}>
+                  Find Contract
+                </button>
+              </div>
+            ) : null}
+          </>
         )}
         {nextContract ? (
           <p className="contract-hint">Next available contract unlocks in order and cannot be repeated.</p>
@@ -323,7 +339,7 @@ function App() {
       </section>
 
       <section className="panel">
-        <h2>Actions</h2>
+        <h2>Operations</h2>
         <div className="actions">
           <button type="button" onClick={collectRawData} disabled={!canCollectData}>
             Collect Data (+1 raw)
@@ -345,12 +361,6 @@ function App() {
           </label>
           <button type="button" onClick={startTrainingCycle} disabled={!canStartTraining}>
             Train Model (timed)
-          </button>
-          <button type="button" onClick={findContract} disabled={!canFindContract}>
-            Find Contract
-          </button>
-          <button type="button" onClick={deliverContract} disabled={!canDeliverContract}>
-            Deliver Contract (timed)
           </button>
         </div>
         <p className="training-hint">
