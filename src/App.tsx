@@ -1,52 +1,22 @@
 import { useEffect, useMemo, useState } from 'react';
 import './App.css';
+import { ContractBoard } from './components/ContractBoard';
+import { MilestonePanel } from './components/MilestonePanel';
+import { OperationsPanel } from './components/OperationsPanel';
+import { StartupStatePanel } from './components/StartupStatePanel';
+import { TimedActivityPanel } from './components/TimedActivityPanel';
 import {
-  calculateTrainingQualityGain,
-  CONTRACT_LADDER,
   DELIVERY_DURATION_MS,
-  getNewlyReachedCashMilestones,
   getNextIncompleteContract,
   getTrainingDurationMs,
-  getUpcomingCashMilestones,
   resolveCleaningOutcome,
   STARTER_HARDWARE
 } from './gameRules';
-
-type TimedActivityType = 'training' | 'delivery';
-
-type ActiveTimedActivity = {
-  type: TimedActivityType;
-  label: string;
-  startedAt: number;
-  endsAt: number;
-  trainingInputCleanData?: number;
-  contractId?: string;
-};
-
-type StartupState = {
-  euros: number;
-  claimedCashMilestones: number[];
-  rawData: number;
-  cleanData: number;
-  modelQuality: number;
-  completedContractIds: string[];
-  revealedContractId: string | null;
-  activeTimedActivity: ActiveTimedActivity | null;
-};
-
-const initialState: StartupState = {
-  euros: 0,
-  claimedCashMilestones: [],
-  rawData: 0,
-  cleanData: 0,
-  modelQuality: 0,
-  completedContractIds: [],
-  revealedContractId: null,
-  activeTimedActivity: null
-};
+import { getGameViewModel } from './gameSelectors';
+import { initialStartupState, resolveCompletedTimedActivity, type StartupState } from './gameState';
 
 function App() {
-  const [state, setState] = useState<StartupState>(initialState);
+  const [state, setState] = useState<StartupState>(initialStartupState);
   const [now, setNow] = useState(() => Date.now());
   const [selectedTrainingCleanData, setSelectedTrainingCleanData] = useState(1);
 
@@ -76,114 +46,17 @@ function App() {
         return current;
       }
 
-      if (current.activeTimedActivity.type === 'training') {
-        const qualityGain = calculateTrainingQualityGain(current.activeTimedActivity.trainingInputCleanData ?? 1);
-
-        return {
-          ...current,
-          modelQuality: current.modelQuality + qualityGain,
-          activeTimedActivity: null
-        };
-      }
-
-      const deliveredContractId = current.activeTimedActivity.contractId;
-      const deliveredContract = CONTRACT_LADDER.find((contract) => contract.id === deliveredContractId);
-
-      if (!deliveredContract) {
-        return {
-          ...current,
-          activeTimedActivity: null
-        };
-      }
-
-      const nextEuros = current.euros + deliveredContract.rewardEuros;
-      const newlyReachedCashMilestones = getNewlyReachedCashMilestones(
-        nextEuros,
-        current.claimedCashMilestones
-      );
-
-      return {
-        ...current,
-        euros: nextEuros,
-        claimedCashMilestones: [...current.claimedCashMilestones, ...newlyReachedCashMilestones],
-        completedContractIds: [...current.completedContractIds, deliveredContract.id],
-        revealedContractId: null,
-        activeTimedActivity: null
-      };
+      return resolveCompletedTimedActivity(current);
     });
   }, [now, state.activeTimedActivity]);
 
-  const startupPhase = useMemo(() => {
-    if (state.modelQuality >= 40) {
-      return 'Early traction';
-    }
-
-    if (state.modelQuality >= 20) {
-      return 'Prototype readiness';
-    }
-
-    return 'Foundation setup';
-  }, [state.modelQuality]);
-
-  const revealedContract = useMemo(
-    () => CONTRACT_LADDER.find((contract) => contract.id === state.revealedContractId) ?? null,
-    [state.revealedContractId]
+  const viewModel = useMemo(
+    () => getGameViewModel(state, selectedTrainingCleanData, now),
+    [now, selectedTrainingCleanData, state]
   );
-
-  const nextContract = useMemo(
-    () => getNextIncompleteContract(state.completedContractIds),
-    [state.completedContractIds]
-  );
-
-  const isBusy = state.activeTimedActivity !== null;
-  const richUnclePoints = state.claimedCashMilestones.length;
-  const hasReachedMilestone = richUnclePoints > 0;
-  const latestClaimedMilestone = Math.max(0, ...state.claimedCashMilestones);
-  const upcomingCashMilestones = useMemo(
-    () => getUpcomingCashMilestones(state.claimedCashMilestones, 3),
-    [state.claimedCashMilestones]
-  );
-
-  const activeProgress = useMemo(() => {
-    if (!state.activeTimedActivity) {
-      return null;
-    }
-
-    const durationMs = state.activeTimedActivity.endsAt - state.activeTimedActivity.startedAt;
-    const elapsedMs = Math.min(durationMs, Math.max(0, now - state.activeTimedActivity.startedAt));
-    const percent = Math.floor((elapsedMs / durationMs) * 100);
-    const secondsRemaining = Math.max(0, Math.ceil((state.activeTimedActivity.endsAt - now) / 1000));
-
-    return { percent, secondsRemaining };
-  }, [now, state.activeTimedActivity]);
-
-  const canCollectData = !isBusy;
-  const canCleanData = !isBusy && state.rawData > 0;
-  const hasValidTrainingSelection =
-    Number.isInteger(selectedTrainingCleanData) &&
-    selectedTrainingCleanData >= 1 &&
-    selectedTrainingCleanData <= state.cleanData;
-  const canStartTraining = !isBusy && hasValidTrainingSelection;
-  const canFindContract = !isBusy && !state.revealedContractId && !!nextContract;
-  const canDeliverContract =
-    !isBusy &&
-    !!revealedContract &&
-    state.modelQuality >= revealedContract.requiredModelQuality;
-
-  const currentActivityText = useMemo(() => {
-    if (state.activeTimedActivity) {
-      return state.activeTimedActivity.label;
-    }
-
-    if (hasReachedMilestone) {
-      return `Reached €${latestClaimedMilestone.toLocaleString('en-US')} cash milestone — Rich Uncle noticed`;
-    }
-
-    return 'Idle — choose your next startup action';
-  }, [hasReachedMilestone, latestClaimedMilestone, state.activeTimedActivity]);
 
   const collectRawData = () => {
-    if (!canCollectData) {
+    if (!viewModel.canCollectData) {
       return;
     }
 
@@ -194,7 +67,7 @@ function App() {
   };
 
   const cleanDataset = () => {
-    if (!canCleanData) {
+    if (!viewModel.canCleanData) {
       return;
     }
 
@@ -206,7 +79,7 @@ function App() {
   };
 
   const startTrainingCycle = () => {
-    if (!canStartTraining) {
+    if (!viewModel.canStartTraining) {
       return;
     }
 
@@ -228,7 +101,7 @@ function App() {
   };
 
   const findContract = () => {
-    if (!canFindContract) {
+    if (!viewModel.canFindContract) {
       return;
     }
 
@@ -239,7 +112,9 @@ function App() {
   };
 
   const deliverContract = () => {
-    if (!canDeliverContract || !revealedContract) {
+    const revealedContract = viewModel.revealedContract;
+
+    if (!viewModel.canDeliverContract || !revealedContract) {
       return;
     }
 
@@ -268,148 +143,42 @@ function App() {
         </p>
       </header>
 
-      <section className="panel">
-        <h2>Startup State</h2>
-        <ul className="resource-grid">
-          <li>
-            <strong>Cash</strong>
-            <span>€{state.euros}</span>
-          </li>
-          <li>
-            <strong>Rich Uncle Points</strong>
-            <span>{richUnclePoints}</span>
-          </li>
-          <li>
-            <strong>Raw Data</strong>
-            <span>{state.rawData}</span>
-          </li>
-          <li>
-            <strong>Clean Data</strong>
-            <span>{state.cleanData}</span>
-          </li>
-          <li>
-            <strong>Model Quality</strong>
-            <span>{state.modelQuality}</span>
-          </li>
-          <li>
-            <strong>Phase</strong>
-            <span>{startupPhase}</span>
-          </li>
-          <li>
-            <strong>Current Activity</strong>
-            <span>{currentActivityText}</span>
-          </li>
-          <li>
-            <strong>Hardware</strong>
-            <span>{STARTER_HARDWARE.displayName}</span>
-          </li>
-          <li>
-            <strong>Training Speed</strong>
-            <span>{STARTER_HARDWARE.trainingSpeed.toFixed(1)}x</span>
-          </li>
-        </ul>
-        <details className="milestone-details">
-          <summary>Upcoming Rich Uncle milestones</summary>
-          <p>
-            Earn 1 Rich Uncle Point for each cash milestone. Points are future prestige-style currency
-            and cannot be spent yet.
-          </p>
-          <ul>
-            {upcomingCashMilestones.map((milestone) => (
-              <li key={milestone}>€{milestone.toLocaleString('en-US')} cash milestone</li>
-            ))}
-          </ul>
-        </details>
-      </section>
+      <StartupStatePanel
+        state={state}
+        richUnclePoints={viewModel.richUnclePoints}
+        startupPhase={viewModel.startupPhase}
+        currentActivityText={viewModel.currentActivityText}
+        upcomingCashMilestones={viewModel.upcomingCashMilestones}
+      />
 
-      <section className="panel">
-        <h2>Timed Activity</h2>
-        {state.activeTimedActivity && activeProgress ? (
-          <div className="progress-wrap" aria-live="polite">
-            <p>
-              {state.activeTimedActivity.label} • {activeProgress.secondsRemaining}s remaining
-            </p>
-            <div className="progress-track" role="progressbar" aria-valuenow={activeProgress.percent} aria-valuemin={0} aria-valuemax={100}>
-              <div className="progress-fill" style={{ width: `${activeProgress.percent}%` }} />
-            </div>
-          </div>
-        ) : (
-          <p>No timed activity active.</p>
-        )}
-      </section>
+      <TimedActivityPanel
+        activeTimedActivity={state.activeTimedActivity}
+        activeProgress={viewModel.activeProgress}
+      />
 
-      <section className="panel">
-        <h2>Contract Board</h2>
-        {revealedContract ? (
-          <>
-            <div className="contract-card">
-              <h3>{revealedContract.title}</h3>
-              <p>Required Model Quality: {revealedContract.requiredModelQuality}</p>
-              <p>Reward: €{revealedContract.rewardEuros}</p>
-            </div>
-            <div className="actions contract-actions">
-              <button type="button" onClick={deliverContract} disabled={!canDeliverContract}>
-                Deliver Contract (timed)
-              </button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p>{nextContract ? 'No contract revealed yet.' : 'All current contracts completed.'}</p>
-            {nextContract ? (
-              <div className="actions contract-actions">
-                <button type="button" onClick={findContract} disabled={!canFindContract}>
-                  Find Contract
-                </button>
-              </div>
-            ) : null}
-          </>
-        )}
-        {nextContract ? (
-          <p className="contract-hint">Next available contract unlocks in order and cannot be repeated.</p>
-        ) : null}
-      </section>
+      <ContractBoard
+        revealedContract={viewModel.revealedContract}
+        nextContract={viewModel.nextContract}
+        canFindContract={viewModel.canFindContract}
+        canDeliverContract={viewModel.canDeliverContract}
+        onFindContract={findContract}
+        onDeliverContract={deliverContract}
+      />
 
-      <section className="panel">
-        <h2>Operations</h2>
-        <div className="actions">
-          <button type="button" onClick={collectRawData} disabled={!canCollectData}>
-            Collect Data (+1 raw)
-          </button>
-          <button type="button" onClick={cleanDataset} disabled={!canCleanData}>
-            Clean Dataset (-1 raw, usually +1 clean)
-          </button>
-          <label className="training-input">
-            Clean data for training
-            <input
-              type="number"
-              min={1}
-              max={Math.max(1, state.cleanData)}
-              step={1}
-              value={selectedTrainingCleanData}
-              onChange={(event) => setSelectedTrainingCleanData(Number(event.target.value))}
-              disabled={isBusy || state.cleanData === 0}
-            />
-          </label>
-          <button type="button" onClick={startTrainingCycle} disabled={!canStartTraining}>
-            Train Model (timed)
-          </button>
-        </div>
-        <p className="training-hint">
-          Training takes about {getTrainingDurationMs(Math.max(1, selectedTrainingCleanData), STARTER_HARDWARE) / 1000}s
-          at current hardware speed. Larger runs usually improve model quality more, but outcomes vary.
-        </p>
-      </section>
+      <OperationsPanel
+        cleanData={state.cleanData}
+        isBusy={viewModel.isBusy}
+        selectedTrainingCleanData={selectedTrainingCleanData}
+        canCollectData={viewModel.canCollectData}
+        canCleanData={viewModel.canCleanData}
+        canStartTraining={viewModel.canStartTraining}
+        onCollectRawData={collectRawData}
+        onCleanDataset={cleanDataset}
+        onSelectedTrainingCleanDataChange={setSelectedTrainingCleanData}
+        onStartTrainingCycle={startTrainingCycle}
+      />
 
-      {hasReachedMilestone ? (
-        <section className="panel win-panel" aria-live="polite">
-          <h2>Milestone reached</h2>
-          <p>
-            Rich Uncle awarded {richUnclePoints} total point{richUnclePoints === 1 ? '' : 's'} for your
-            reached cash milestone{richUnclePoints === 1 ? '' : 's'}.
-          </p>
-        </section>
-      ) : null}
+      {viewModel.hasReachedMilestone ? <MilestonePanel richUnclePoints={viewModel.richUnclePoints} /> : null}
     </main>
   );
 }
