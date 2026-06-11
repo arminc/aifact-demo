@@ -1,7 +1,7 @@
 ---
 description: PR creation and CI follow-through for shipped stories
 mode: all
-model: openai/gpt-5.3-codex
+model: openai/gpt-5.5
 ---
 # Output Directives
 - Start with action.

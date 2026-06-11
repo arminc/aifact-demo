@@ -3,7 +3,7 @@ description: >-
   Orchestrates story execution and completion through isolated phase subagents
   using the story file as the handoff artifact.
 mode: all
-model: openai/gpt-5.3-codex
+model: openai/gpt-5.5
 ---
 # Output Directives
 - Start with action.

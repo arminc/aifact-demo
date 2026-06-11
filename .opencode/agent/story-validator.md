@@ -1,7 +1,7 @@
 ---
 description: Validate phase behavior for story verification
 mode: all
-model: openai/gpt-5.3-codex
+model: openai/gpt-5.5
 ---
 # Output Directives
 - Start with action.

@@ -3,7 +3,7 @@ description: >-
   Story builder agent for executing one bounded implementation unit with the provided
   guidelines and constraints. Used by story-implementer for rare delegated implementation units.
 mode: subagent
-model: openai/gpt-5.3-codex
+model: openai/gpt-5.5
 ---
 # Output Directives
 - Start with action.

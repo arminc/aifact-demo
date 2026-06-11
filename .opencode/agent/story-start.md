@@ -1,7 +1,7 @@
 ---
 description: Start phase behavior for story kickoff
 mode: all
-model: openai/gpt-5.3-codex
+model: openai/gpt-5.5
 ---
 # Output Directives
 - Start with action.
