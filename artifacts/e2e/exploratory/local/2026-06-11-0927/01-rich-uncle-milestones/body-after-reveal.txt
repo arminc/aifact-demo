@@ -1,0 +1,51 @@
+AI STARTUP BUILDER • EARLY GAME
+
+Build an AI startup from your laptop
+
+Grow from zero to your first €100 by collecting data, training your model, and delivering customer contracts.
+
+Startup State
+Cash
+€0
+Rich Uncle Points
+0
+Raw Data
+0
+Clean Data
+0
+Model Quality
+0
+Phase
+Foundation setup
+Current Activity
+Idle — choose your next startup action
+Hardware
+Laptop
+Training Speed
+1.0x
+Upcoming Rich Uncle milestones
+
+Earn 1 Rich Uncle Point for each cash milestone. Points are future prestige-style currency and cannot be spent yet.
+
+€100 cash milestone
+€1,000 cash milestone
+€10,000 cash milestone
+Timed Activity
+
+No timed activity active.
+
+Contract Board
+
+No contract revealed yet.
+
+Find Contract
+
+Next available contract unlocks in order and cannot be repeated.
+
+Operations
+Collect Data (+1 raw)
+Clean Dataset (-1 raw, usually +1 clean)
+Clean data for training
+Train Model (timed)
+
+Training takes about 2s at current hardware speed. Larger runs usually improve model quality more, but outcomes vary.

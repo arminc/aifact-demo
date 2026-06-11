@@ -4,11 +4,12 @@ import {
   calculateTrainingQualityGain,
   CONTRACT_LADDER,
   DELIVERY_DURATION_MS,
+  getNewlyReachedCashMilestones,
   getNextIncompleteContract,
   getTrainingDurationMs,
+  getUpcomingCashMilestones,
   resolveCleaningOutcome,
-  STARTER_HARDWARE,
-  WIN_EUROS
+  STARTER_HARDWARE
 } from './gameRules';
 
 type TimedActivityType = 'training' | 'delivery';
@@ -24,6 +25,7 @@ type ActiveTimedActivity = {
 
 type StartupState = {
   euros: number;
+  claimedCashMilestones: number[];
   rawData: number;
   cleanData: number;
   modelQuality: number;
@@ -34,6 +36,7 @@ type StartupState = {
 
 const initialState: StartupState = {
   euros: 0,
+  claimedCashMilestones: [],
   rawData: 0,
   cleanData: 0,
   modelQuality: 0,
@@ -93,9 +96,16 @@ function App() {
         };
       }
 
+      const nextEuros = current.euros + deliveredContract.rewardEuros;
+      const newlyReachedCashMilestones = getNewlyReachedCashMilestones(
+        nextEuros,
+        current.claimedCashMilestones
+      );
+
       return {
         ...current,
-        euros: current.euros + deliveredContract.rewardEuros,
+        euros: nextEuros,
+        claimedCashMilestones: [...current.claimedCashMilestones, ...newlyReachedCashMilestones],
         completedContractIds: [...current.completedContractIds, deliveredContract.id],
         revealedContractId: null,
         activeTimedActivity: null
@@ -126,7 +136,13 @@ function App() {
   );
 
   const isBusy = state.activeTimedActivity !== null;
-  const hasWon = state.euros >= WIN_EUROS;
+  const richUnclePoints = state.claimedCashMilestones.length;
+  const hasReachedMilestone = richUnclePoints > 0;
+  const latestClaimedMilestone = Math.max(0, ...state.claimedCashMilestones);
+  const upcomingCashMilestones = useMemo(
+    () => getUpcomingCashMilestones(state.claimedCashMilestones, 3),
+    [state.claimedCashMilestones]
+  );
 
   const activeProgress = useMemo(() => {
     if (!state.activeTimedActivity) {
@@ -159,12 +175,12 @@ function App() {
       return state.activeTimedActivity.label;
     }
 
-    if (hasWon) {
-      return 'Reached €100 — your first AI startup milestone is complete';
+    if (hasReachedMilestone) {
+      return `Reached €${latestClaimedMilestone.toLocaleString('en-US')} cash milestone — Rich Uncle noticed`;
     }
 
     return 'Idle — choose your next startup action';
-  }, [hasWon, state.activeTimedActivity]);
+  }, [hasReachedMilestone, latestClaimedMilestone, state.activeTimedActivity]);
 
   const collectRawData = () => {
     if (!canCollectData) {
@@ -260,6 +276,10 @@ function App() {
             <span>€{state.euros}</span>
           </li>
           <li>
+            <strong>Rich Uncle Points</strong>
+            <span>{richUnclePoints}</span>
+          </li>
+          <li>
             <strong>Raw Data</strong>
             <span>{state.rawData}</span>
           </li>
@@ -288,6 +308,18 @@ function App() {
             <span>{STARTER_HARDWARE.trainingSpeed.toFixed(1)}x</span>
           </li>
         </ul>
+        <details className="milestone-details">
+          <summary>Upcoming Rich Uncle milestones</summary>
+          <p>
+            Earn 1 Rich Uncle Point for each cash milestone. Points are future prestige-style currency
+            and cannot be spent yet.
+          </p>
+          <ul>
+            {upcomingCashMilestones.map((milestone) => (
+              <li key={milestone}>€{milestone.toLocaleString('en-US')} cash milestone</li>
+            ))}
+          </ul>
+        </details>
       </section>
 
       <section className="panel">
@@ -369,10 +401,13 @@ function App() {
         </p>
       </section>
 
-      {hasWon ? (
+      {hasReachedMilestone ? (
         <section className="panel win-panel" aria-live="polite">
           <h2>Milestone reached</h2>
-          <p>You earned your first €100. First startup milestone achieved.</p>
+          <p>
+            Rich Uncle awarded {richUnclePoints} total point{richUnclePoints === 1 ? '' : 's'} for your
+            reached cash milestone{richUnclePoints === 1 ? '' : 's'}.
+          </p>
         </section>
       ) : null}
     </main>

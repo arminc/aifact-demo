@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import App from './App';
-import { DELIVERY_DURATION_MS, getTrainingDurationMs, STARTER_HARDWARE } from './gameRules';
+import { CONTRACT_LADDER, DELIVERY_DURATION_MS, getTrainingDurationMs, STARTER_HARDWARE } from './gameRules';
 
 const getStartupStateSection = () => {
   const section = screen.getByRole('heading', { name: /startup state/i }).closest('section');
@@ -23,6 +23,12 @@ const getContractBoardSection = () => {
 
 const getOperationButton = (name: RegExp) => within(getOperationsSection()).getByRole('button', { name });
 const getContractBoardButton = (name: RegExp) => within(getContractBoardSection()).getByRole('button', { name });
+
+const advanceTimers = (durationMs: number) => {
+  act(() => {
+    vi.advanceTimersByTime(durationMs);
+  });
+};
 
 const getResourceValue = (label: RegExp) => {
   const resourceLabel = within(getStartupStateSection()).getByText(label, { selector: 'strong' });
@@ -47,10 +53,43 @@ describe('App gameplay loop', () => {
     vi.useRealTimers();
   });
 
+  const collectCleanData = (amount: number) => {
+    const collectDataButton = getOperationButton(/collect data/i);
+    const cleanDataButton = getOperationButton(/clean dataset/i);
+
+    for (let i = 0; i < amount; i += 1) {
+      fireEvent.click(collectDataButton);
+      fireEvent.click(cleanDataButton);
+    }
+  };
+
+  const trainWithCleanData = (amount: number) => {
+    collectCleanData(amount);
+    fireEvent.change(screen.getByRole('spinbutton', { name: /clean data for training/i }), {
+      target: { value: String(amount) }
+    });
+    fireEvent.click(getOperationButton(/train model/i));
+    advanceTimers(getTrainingDurationMs(amount, STARTER_HARDWARE));
+  };
+
+  const trainUntilQuality = (targetQuality: number) => {
+    while (Number(getResourceValue(/model quality/i)) < targetQuality) {
+      trainWithCleanData(10);
+    }
+  };
+
+  const deliverNextContract = (requiredModelQuality: number) => {
+    trainUntilQuality(requiredModelQuality);
+    fireEvent.click(getContractBoardButton(/find contract/i));
+    fireEvent.click(getContractBoardButton(/deliver contract/i));
+    advanceTimers(DELIVERY_DURATION_MS);
+  };
+
   it('shows initial startup state with hardware and no MVP text', () => {
     render(<App />);
 
     expect(getResourceValue(/cash/i)).toBe('€0');
+    expect(getResourceValue(/rich uncle points/i)).toBe('0');
     expect(getResourceValue(/hardware/i)).toBe('Laptop');
     expect(getResourceValue(/training speed/i)).toBe('1.0x');
     expect(screen.getByRole('heading', { name: /operations/i })).toBeInTheDocument();
@@ -118,9 +157,7 @@ describe('App gameplay loop', () => {
         fireEvent.click(cleanDataButton);
       }
       fireEvent.click(trainModelButton);
-      act(() => {
-        vi.advanceTimersByTime(getTrainingDurationMs(1, STARTER_HARDWARE) * 4);
-      });
+      advanceTimers(getTrainingDurationMs(1, STARTER_HARDWARE) * 4);
     }
 
     fireEvent.click(getContractBoardButton(/find contract/i));
@@ -130,9 +167,7 @@ describe('App gameplay loop', () => {
     expect(getContractBoardButton(/deliver contract/i)).toBeEnabled();
 
     fireEvent.click(getContractBoardButton(/deliver contract/i));
-    act(() => {
-      vi.advanceTimersByTime(DELIVERY_DURATION_MS);
-    });
+    advanceTimers(DELIVERY_DURATION_MS);
 
     expect(getResourceValue(/cash/i)).toBe('€90');
     fireEvent.click(getContractBoardButton(/find contract/i));
@@ -146,5 +181,48 @@ describe('App gameplay loop', () => {
 
     expect(screen.getByRole('heading', { name: /starter ai pilot contract/i })).toBeInTheDocument();
     expect(getContractBoardButton(/deliver contract/i)).toBeDisabled();
+  });
+
+  it('reveals only the next few Rich Uncle milestones without spend or restart controls', () => {
+    render(<App />);
+
+    const summary = screen.getByText(/upcoming rich uncle milestones/i);
+    const details = summary.closest('details');
+    expect(details).not.toHaveAttribute('open');
+
+    fireEvent.click(summary);
+
+    expect(details).toHaveAttribute('open');
+    expect(screen.getByText(/future prestige-style currency/i)).toBeInTheDocument();
+    expect(screen.getByText(/cannot be spent yet/i)).toBeInTheDocument();
+    expect(screen.getByText(/€100 cash milestone/i)).toBeInTheDocument();
+    expect(screen.getByText(/€1,000 cash milestone/i)).toBeInTheDocument();
+    expect(screen.getByText(/€10,000 cash milestone/i)).toBeInTheDocument();
+    expect(screen.queryByText(/€100,000 cash milestone/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /restart|reset|prestige|spend/i })).not.toBeInTheDocument();
+  });
+
+  it('awards Rich Uncle Points through the timed contract delivery path at €100 and €1,000', () => {
+    render(<App />);
+
+    deliverNextContract(CONTRACT_LADDER[0].requiredModelQuality);
+    expect(getResourceValue(/cash/i)).toBe('€90');
+    expect(getResourceValue(/rich uncle points/i)).toBe('0');
+
+    deliverNextContract(CONTRACT_LADDER[1].requiredModelQuality);
+    expect(getResourceValue(/cash/i)).toBe('€220');
+    expect(getResourceValue(/rich uncle points/i)).toBe('1');
+
+    deliverNextContract(CONTRACT_LADDER[2].requiredModelQuality);
+    expect(getResourceValue(/cash/i)).toBe('€420');
+    expect(getResourceValue(/rich uncle points/i)).toBe('1');
+
+    for (const contract of CONTRACT_LADDER.slice(3, 7)) {
+      deliverNextContract(contract.requiredModelQuality);
+    }
+
+    expect(getResourceValue(/cash/i)).toBe('€1210');
+    expect(getResourceValue(/rich uncle points/i)).toBe('2');
+    expect(screen.getByText(/rich uncle awarded 2 total points/i)).toBeInTheDocument();
   });
 });

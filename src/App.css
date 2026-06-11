@@ -96,10 +96,26 @@ p {
 }
 
 .contract-hint,
-.training-hint {
+.training-hint,
+.milestone-details {
   margin-top: 0.75rem;
   color: #334155;
   font-size: 0.95rem;
+}
+
+.milestone-details summary {
+  cursor: pointer;
+  font-weight: 700;
+  color: #3730a3;
+}
+
+.milestone-details p {
+  margin: 0.65rem 0 0.4rem;
+}
+
+.milestone-details ul {
+  margin: 0;
+  padding-left: 1.25rem;
 }
 
 .contract-actions {

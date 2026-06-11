@@ -1,0 +1,8 @@
+2026-06-11 09:27 local browser validation
+- Opened http://127.0.0.1:5173 with Vite dev server.
+- Captured initial Startup State with compact Rich Uncle Points total and closed details reveal.
+- Clicked "Upcoming Rich Uncle milestones" details summary.
+- Confirmed reveal copy says points are future prestige-style currency and cannot be spent yet.
+- Confirmed reveal lists only €100, €1,000, and €10,000 upcoming milestones.
+- Confirmed visible core controls remain available: Find Contract, Collect Data, Clean Dataset, Train Model.
+- No restart/reset/prestige/spend controls observed in captured page text.
